@@ -28,6 +28,7 @@ interface JoinMessage {
 
 interface MoveMessage {
   action: Action.MOVE;
+  id? : string;
   spaceId: string | null;
   x: number;
   y: number;
@@ -36,10 +37,11 @@ interface MoveMessage {
 interface Player {
   x: number;
   y: number;
+  id? : string;
   // Add other player properties as needed
 }
 
-const MetaverseSpace = ({ spaceId, token }: { spaceId: string, token: string }) => {
+const MetaverseSpace = ({ spaceId, token, id }: { spaceId: string, token: string, id: string }) => {
   const [connected, setConnected] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -77,22 +79,42 @@ const MetaverseSpace = ({ spaceId, token }: { spaceId: string, token: string }) 
       try {
         const message = JSON.parse(event.data);
         
-        // Handle different message types
-        if ( message === 'Space joined') {
+        if (message === 'Space joined') {
+          // Add the newly joined player
           setPlayers(prevPlayers => [...prevPlayers, {
+            id: id,
             x: 400,
             y: 300
           }]);
         } else if (message.action === Action.MOVE) {
-          // Handle movement updates
-          // Simply update player position
-      setPlayers([{
-        x: message.x,
-        y: message.y
-      }]);
-      console.log('Player moved to:', message.x, message.y);
+          setPlayers(prevPlayers => {
+            // Check if the player exists
+            const playerExists = prevPlayers.some(p => p.id === message.id);
+            
+            if (playerExists) {
+              // Update existing player position
+              return prevPlayers.map(player => {
+                if (player.id === message.id) {
+                  return {
+                    ...player,
+                    x: message.x,
+                    y: message.y,
+                  };
+                }
+                return player;
+              });
+            } else {
+              // Add new player if they don't exist yet
+              return [...prevPlayers, {
+                id: message.id,
+                x: message.x,
+                y: message.y
+              }];
+            }
+          });
+          console.log('Player moved to:', message.x, message.y);
         } else {
-            console.log(message)
+          console.log(message);
         }
       } catch (error) {
         console.error('Error parsing message:', error);
@@ -150,6 +172,7 @@ const MetaverseSpace = ({ spaceId, token }: { spaceId: string, token: string }) 
 
     // Send movement message matching server interface
     const moveMessage: MoveMessage = {
+      id: id,
       action: Action.MOVE,
       spaceId: param.get('spaceId'),
       x: x,

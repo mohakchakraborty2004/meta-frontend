@@ -1,3 +1,16 @@
+"use client";
+
+import { useRouter, useSearchParams } from "next/navigation";
+
+// export default function Space() {
+
+
+
+//     return <div>
+//         <h1> spaceId : {spaceId}</h1>
+//     </div>
+// }
+
 import React, { useState, useEffect, useRef } from 'react';
 
 // Matching the server's Action enum
@@ -8,14 +21,15 @@ enum Action {
 
 // Matching server interfaces
 interface JoinMessage {
-  action: Action.JOIN;
-  spaceId: string;
+  action: string;
+  spaceId: string | null ;
   token: string;
 }
 
 interface MoveMessage {
   action: Action.MOVE;
-  spaceId: string;
+  id? : string;
+  spaceId: string | null;
   x: number;
   y: number;
 }
@@ -23,47 +37,84 @@ interface MoveMessage {
 interface Player {
   x: number;
   y: number;
+  id? : string;
   // Add other player properties as needed
 }
 
-const MetaverseSpace = ({ spaceId, token }: { spaceId: string, token: string }) => {
+const MetaverseSpace = ({ spaceId, token, id }: { spaceId: string, token: string, id: string }) => {
   const [connected, setConnected] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const router = useRouter()
+  const param = useSearchParams()
+  
+ 
 
   useEffect(() => {
-    // Create WebSocket connection
     wsRef.current = new WebSocket('ws://localhost:8080'); // Adjust port as needed
+    // Create WebSocket connection
+    if(!wsRef.current){
+      console.log("no socket detected")
+      return;
+    }
+   
 
     wsRef.current.onopen = () => {
       console.log('Connected to server');
       setConnected(true);
-      
-      // Send join message when connection opens
-      const joinMessage: JoinMessage = {
+    };
+
+    wsRef.current.addEventListener('open', () => {
+      const joinMessage = {
         action: Action.JOIN,
-        spaceId: spaceId,
+        spaceId: param.get('spaceId'),
         token: token
       };
       wsRef.current?.send(JSON.stringify(joinMessage));
-    };
+      console.log('Join message sent');
+    });
 
     wsRef.current.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
         
-        // Handle different message types
-        if (typeof message === 'string') {
-          // Handle server messages like "Space Joined" or "No Space found for that ID"
-          console.log('Server message:', message);
+        if (message === 'Space joined') {
+          // Add the newly joined player
+          setPlayers(prevPlayers => [...prevPlayers, {
+            id: id,
+            x: 400,
+            y: 300
+          }]);
         } else if (message.action === Action.MOVE) {
-          // Handle movement updates
           setPlayers(prevPlayers => {
-            // Update player positions based on movement message
-            // This is a simplified example - adjust based on your needs
-            return [...prevPlayers, { x: message.x, y: message.y }];
+            // Check if the player exists
+            const playerExists = prevPlayers.some(p => p.id === message.id);
+            
+            if (playerExists) {
+              // Update existing player position
+              return prevPlayers.map(player => {
+                if (player.id === message.id) {
+                  return {
+                    ...player,
+                    x: message.x,
+                    y: message.y,
+                  };
+                }
+                return player;
+              });
+            } else {
+              // Add new player if they don't exist yet
+              return [...prevPlayers, {
+                id: message.id,
+                x: message.x,
+                y: message.y
+              }];
+            }
           });
+          console.log('Player moved to:', message.x, message.y);
+        } else {
+          console.log(message);
         }
       } catch (error) {
         console.error('Error parsing message:', error);
@@ -80,9 +131,10 @@ const MetaverseSpace = ({ spaceId, token }: { spaceId: string, token: string }) 
     };
 
     // Cleanup on unmount
-    return () => {
-      wsRef.current?.close();
-    };
+    // return () => {
+    //   wsRef.current?.close();
+    // };
+
   }, [spaceId, token]);
 
   useEffect(() => {
@@ -120,8 +172,9 @@ const MetaverseSpace = ({ spaceId, token }: { spaceId: string, token: string }) 
 
     // Send movement message matching server interface
     const moveMessage: MoveMessage = {
+      id: id,
       action: Action.MOVE,
-      spaceId: spaceId,
+      spaceId: param.get('spaceId'),
       x: x,
       y: y
     };
